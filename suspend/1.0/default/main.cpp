@@ -14,21 +14,23 @@
  * limitations under the License.
  */
 
+#include "SuspendControlService.h"
+#include "SystemSuspend.h"
+
 #include <android-base/logging.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <binder/ProcessState.h>
 #include <cutils/native_handle.h>
-#include <fcntl.h>
 #include <hidl/HidlTransportSupport.h>
 #include <hwbinder/ProcessState.h>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
-#include "SuspendControlService.h"
-#include "SystemSuspend.h"
+#include <fcntl.h>
+#include <unistd.h>
 
 using android::sp;
 using android::status_t;
@@ -41,9 +43,6 @@ using android::system::suspend::V1_0::SuspendControlService;
 using android::system::suspend::V1_0::SystemSuspend;
 using namespace std::chrono_literals;
 
-static constexpr size_t kNativeWakeLockStatsCapacity = 1000;
-static constexpr char kSysClassWakeup[] = "/sys/class/wakeup";
-static constexpr char kSysPowerSuspendStats[] = "/sys/power/suspend_stats";
 static constexpr char kSysPowerWakeupCount[] = "/sys/power/wakeup_count";
 static constexpr char kSysPowerState[] = "/sys/power/state";
 
@@ -55,16 +54,6 @@ int main() {
     unique_fd stateFd{TEMP_FAILURE_RETRY(open(kSysPowerState, O_CLOEXEC | O_RDWR))};
     if (stateFd < 0) {
         PLOG(ERROR) << "error opening " << kSysPowerState;
-    }
-    unique_fd kernelWakelockStatsFd{
-        TEMP_FAILURE_RETRY(open(kSysClassWakeup, O_DIRECTORY | O_CLOEXEC | O_RDONLY))};
-    if (kernelWakelockStatsFd < 0) {
-        PLOG(ERROR) << "SystemSuspend: Error opening " << kSysClassWakeup;
-    }
-    unique_fd suspendStatsFd{
-        TEMP_FAILURE_RETRY(open(kSysPowerSuspendStats, O_DIRECTORY | O_CLOEXEC | O_RDONLY))};
-    if (suspendStatsFd < 0) {
-        PLOG(ERROR) << "SystemSuspend: Error opening " << kSysPowerSuspendStats;
     }
 
     // If either /sys/power/wakeup_count or /sys/power/state fail to open, we construct
@@ -91,9 +80,8 @@ int main() {
     ps->startThreadPool();
 
     sp<SystemSuspend> suspend =
-        new SystemSuspend(std::move(wakeupCountFd), std::move(stateFd), std::move(suspendStatsFd),
-                          kNativeWakeLockStatsCapacity, std::move(kernelWakelockStatsFd),
-                          100ms /* baseSleepTime */, suspendControl, true /* mUseSuspendCounter*/);
+        new SystemSuspend(std::move(wakeupCountFd), std::move(stateFd), 100 /* maxStatsEntries */,
+                          100ms /* baseSleepTime */, suspendControl, false /* mUseSuspendCounter*/);
     status_t status = suspend->registerAsService();
     if (android::OK != status) {
         LOG(FATAL) << "Unable to register system-suspend service: " << status;
