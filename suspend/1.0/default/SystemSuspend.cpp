@@ -25,6 +25,7 @@
 #include <hwbinder/IPCThreadState.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <cutils/properties.h>
 
 #include <string>
 #include <thread>
@@ -46,6 +47,7 @@ struct SuspendTime {
 };
 
 static const char kSleepState[] = "mem";
+static const char kSleepState_8mq[] = "freeze";
 // TODO(b/128923994): we only need /sys/power/wake_[un]lock to export debugging info via
 // /sys/kernel/debug/wakeup_sources.
 static constexpr char kSysPowerWakeLock[] = "/sys/power/wake_lock";
@@ -254,6 +256,8 @@ void SystemSuspend::initAutosuspend() {
             std::this_thread::sleep_for(mSleepTime);
             lseek(mWakeupCountFd, 0, SEEK_SET);
             const string wakeupCount = readFd(mWakeupCountFd);
+            char value[PROPERTY_VALUE_MAX];
+            bool success = false;
             if (wakeupCount.empty()) {
                 PLOG(ERROR) << "error reading from /sys/power/wakeup_count";
                 continue;
@@ -269,7 +273,13 @@ void SystemSuspend::initAutosuspend() {
                 PLOG(VERBOSE) << "error writing from /sys/power/wakeup_count";
                 continue;
             }
-            bool success = WriteStringToFd(kSleepState, mStateFd);
+            property_get("ro.product.system.device", value, NULL);
+            if(!strcmp(value,"evk_8mq"))
+            {
+                success = WriteStringToFd(kSleepState_8mq, mStateFd);
+            } else {
+                success = WriteStringToFd(kSleepState, mStateFd);
+            }
             counterLock.unlock();
 
             if (!success) {
